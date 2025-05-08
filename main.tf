@@ -28,6 +28,14 @@ data "azurerm_subnet" "subnet" {
   resource_group_name  = data.azurerm_resource_group.rg.name
 }
 
+#Bloque de creacion de direcciones ip públicas
+resource "azurerm_public_ip" "public_ip" {
+  count               = var.vm_count
+  name                = "PTA-CLI-${count.index + 1}-ip"
+  location            = data.azurerm_resource_group.rg.location
+  resource_group_name = data.azurerm_resource_group.rg.name
+  allocation_method   = "Static"
+}
 
 #Bloque de creación y configuración de las interfaces de red
 resource "azurerm_network_interface" "nic" {
@@ -40,7 +48,34 @@ resource "azurerm_network_interface" "nic" {
     name                          = "ipconfig-PTA-CLI-${count.index + 1}"
     subnet_id                     = data.azurerm_subnet.subnet.id
     private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.public_ip[count.index].id
   }
+}
+
+#Bloque para crear las reglas de NSG
+resource "azurerm_network_security_group" "nsg" {
+  name                = "pta-nsg"
+  location            = data.azurerm_resource_group.rg.location
+  resource_group_name = data.azurerm_resource_group.rg.name
+
+  security_rule {
+    name                       = "Allow-RDP"
+    priority                   = 1000
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "3389"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+#Bloque para asociar la NSG a la NIC
+resource "azurerm_network_interface_security_group_association" "nsg_assoc" {
+  count                     = var.vm_count
+  network_interface_id      = azurerm_network_interface.nic[count.index].id
+  network_security_group_id = azurerm_network_security_group.nsg.id
 }
 
 
